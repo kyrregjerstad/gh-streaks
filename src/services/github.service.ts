@@ -217,6 +217,16 @@ export class GitHubService {
       let lastCommitDate: string | null = null;
       let tempStreak = 0;
 
+      // Find last commit date (most recent date with contributions)
+      for (let i = sortedDates.length - 1; i >= 0; i--) {
+        const [date, count] = sortedDates[i];
+        if (count > 0) {
+          lastCommitDate = date;
+          break;
+        }
+      }
+
+      // Calculate current streak (backward pass)
       for (let i = sortedDates.length - 1; i >= 0; i--) {
         const [date, count] = sortedDates[i];
 
@@ -240,30 +250,17 @@ export class GitHubService {
             break;
           }
         }
-        console.log('----------------------------------------');
-
-        // Update longest streak
-        longestStreak = Math.max(longestStreak, tempStreak);
       }
 
-      // Reset longest streak calculation for reverse pass
+      // Reset longest streak calculation for forward pass
       tempStreak = 0;
 
-      // Calculate streaks (forward pass)
+      // Calculate longest streak (forward pass)
       for (const [date, count] of sortedDates) {
         if (count > 0) {
           tempStreak++;
-          // Update both streaks
+          // Update longest streak
           longestStreak = Math.max(longestStreak, tempStreak);
-          // Only update current streak if we're in the most recent streak
-          if (
-            isWithinInterval(parseISO(date), {
-              start: subDays(today, currentStreak),
-              end: today,
-            })
-          ) {
-            currentStreak = tempStreak;
-          }
         } else {
           tempStreak = 0;
         }

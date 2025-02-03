@@ -1,5 +1,6 @@
 import { expect, test, describe, beforeEach } from 'bun:test';
 import { GitHubService } from '../github.service';
+import type { ContributionResponse } from '../github.service';
 
 // Mock the GraphQL responses
 const mockGraphQLResponse = {
@@ -301,5 +302,73 @@ describe('GitHubService', () => {
     expect(stats.currentStreak).toBe(3);
     // Longest streak should be 3 (Jan 28-30 or Feb 1-3)
     expect(stats.longestStreak).toBe(3);
+  });
+
+  test('should fetch years incrementally until streak breaks', async () => {
+    // Mock current date to 2024-02-03
+    const mockDate = new Date('2024-02-03T12:00:00Z');
+    globalThis.Date = class extends Date {
+      constructor(date?: string | number | Date) {
+        if (date) {
+          super(date);
+        } else {
+          super(mockDate);
+        }
+      }
+    } as DateConstructor;
+
+    const fetchedYears: number[] = [];
+
+    // Mock getContributionsForYear to use our mock data
+    // @ts-ignore - mock the private method
+    service.getContributionsForYear = async (username: string, year: number) => {
+      fetchedYears.push(year);
+      if (year === 2024) {
+        return {
+          user: {
+            contributionsCollection: {
+              contributionCalendar: {
+                totalContributions: 4,
+                weeks: [
+                  {
+                    contributionDays: [
+                      { date: '2024-01-01', contributionCount: 1 }, // Has contribution on Jan 1
+                      { date: '2024-01-02', contributionCount: 0 },
+                      { date: '2024-02-02', contributionCount: 1 }, // Start of current streak
+                      { date: '2024-02-03', contributionCount: 1 }, // Today
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        };
+      } else {
+        return {
+          user: {
+            contributionsCollection: {
+              contributionCalendar: {
+                totalContributions: 1,
+                weeks: [
+                  {
+                    contributionDays: [
+                      { date: '2023-12-31', contributionCount: 1 },
+                      { date: '2023-01-01', contributionCount: 0 }, // No contribution on Jan 1 - should stop here
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        };
+      }
+    };
+
+    const result = await service.getCommitHistory('testuser');
+
+    // Should fetch 2024 first, then 2023, then stop because Jan 1 2023 has no contributions
+    expect(fetchedYears).toEqual([2024, 2023]);
+    expect(result.currentStreak).toBe(2); // 2024-02-02 and 2024-02-03
+    expect(result.totalCommits).toBe(4); // 1 + 0 + 1 + 1 from 2024, 1 from 2023
   });
 });

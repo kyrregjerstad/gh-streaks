@@ -27,7 +27,7 @@ interface UserInfo {
   contributionsCollection: ContributionCollection;
 }
 
-interface ContributionResponse {
+export interface ContributionResponse {
   user: UserInfo;
 }
 

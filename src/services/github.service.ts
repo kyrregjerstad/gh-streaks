@@ -102,31 +102,7 @@ export class GitHubService {
       }
     );
 
-    // Find and log the week containing January 29th
-    const calendar = response.user.contributionsCollection.contributionCalendar;
-    calendar.weeks.forEach((week) => {
-      const hasJan29 = week.contributionDays.some((day) =>
-        day.date.includes('2025-01-29')
-      );
-      if (hasJan29) {
-        console.log('\n🔍 Detailed view of week containing January 29th:');
-        console.log('===========================================');
-        console.log('Local timezone offset:', -tzOffset, 'minutes');
-        week.contributionDays.forEach((day) => {
-          const date = parseISO(day.date);
-          // Adjust the date for local timezone
-          const localDate = new Date(date.getTime() - tzOffset * 60000);
-          console.log(`📅 ${format(localDate, 'EEEE, MMMM do')}`);
-          console.log(`   UTC Date: ${day.date}`);
-          console.log(`   Local Date: ${format(localDate, 'yyyy-MM-dd')}`);
-          console.log(`   Contributions: ${day.contributionCount}`);
-          console.log('   ---');
-        });
-        console.log('===========================================');
-      }
-    });
-
-    return calendar;
+    return response.user.contributionsCollection.contributionCalendar;
   }
 
   async getCommitHistory(username: string): Promise<StreakStats> {
@@ -156,19 +132,13 @@ export class GitHubService {
         user.contributionsCollection.hasAnyRestrictedContributions;
       const restrictedCount = user.contributionsCollection.restrictedContributionsCount;
 
-      if (hasRestrictedContributions) {
-        console.log('\n⚠️ Private Contribution Notice:');
-        console.log(`This user has ${restrictedCount} private contributions.`);
-        if (restrictedCount > 0) {
-          console.log(
-            'All private contributions are now visible with the current token.'
-          );
-        }
+      if (hasRestrictedContributions && restrictedCount > 0) {
+        console.warn('\n⚠️ Private Contribution Notice:');
+        console.warn(`This user has ${restrictedCount} private contributions.`);
+        console.warn('All private contributions are now visible with the current token.');
       }
 
-      console.log('User created at:', user.createdAt);
       const years = user.contributionsCollection.contributionYears;
-      console.log('Contribution years:', years);
 
       // Get all contributions from each year
       const contributions = new Map<string, number>();
@@ -190,8 +160,6 @@ export class GitHubService {
         { length: today.getFullYear() - startYear + 1 },
         (_, i) => startYear + i
       );
-
-      console.log('Fetching contributions for years:', yearsToFetch);
 
       // Fetch all years
       for (const year of yearsToFetch) {
@@ -252,14 +220,13 @@ export class GitHubService {
         }
       }
 
-      // Reset longest streak calculation for forward pass
+      // Reset tempStreak for longest streak calculation
       tempStreak = 0;
 
       // Calculate longest streak (forward pass)
       for (const [date, count] of sortedDates) {
         if (count > 0) {
           tempStreak++;
-          // Update longest streak
           longestStreak = Math.max(longestStreak, tempStreak);
         } else {
           tempStreak = 0;

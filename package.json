@@ -2,7 +2,9 @@
   "name": "gh-streaks",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify"
+    "deploy": "wrangler deploy --minify",
+    "test": "bun test",
+    "bench": "bun test --bench"
   },
   "dependencies": {
     "@octokit/graphql": "^8.2.0",

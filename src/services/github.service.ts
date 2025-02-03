@@ -3,8 +3,8 @@ import { format, isFuture, parseISO } from 'date-fns';
 
 // Types for GitHub API responses
 interface ContributionDay {
-  contributionCount: number;
   date: string;
+  contributionCount: number;
 }
 
 interface ContributionWeek {
@@ -16,23 +16,19 @@ interface ContributionCalendar {
   weeks: ContributionWeek[];
 }
 
-interface UserContributions {
+interface ContributionCollection {
   contributionCalendar: ContributionCalendar;
-  contributionYears: number[];
-  restrictedContributionsCount: number;
   hasAnyRestrictedContributions: boolean;
+  restrictedContributionsCount: number;
 }
 
 interface UserInfo {
   createdAt: string;
-  contributionsCollection: UserContributions;
+  contributionsCollection: ContributionCollection;
 }
 
 interface ContributionResponse {
-  user: {
-    createdAt: string;
-    contributionsCollection: UserContributions;
-  };
+  user: UserInfo;
 }
 
 // Types for internal use
@@ -139,15 +135,33 @@ export class GitHubService {
   private async getContributionsForYear(
     username: string,
     year: number
-  ): Promise<ContributionCalendar> {
-    const { start, end } = this.getDateRangeForYear(year);
-    const response = await this.graphql<ContributionResponse>(CONTRIBUTIONS_QUERY, {
+  ): Promise<ContributionResponse> {
+    const query = `query($username: String!, $from: DateTime!, $to: DateTime!) {
+      user(login: $username) {
+        contributionsCollection(from: $from, to: $to) {
+          contributionCalendar {
+            totalContributions
+            weeks {
+              contributionDays {
+                date
+                contributionCount
+              }
+            }
+          }
+        }
+      }
+    }`;
+
+    const from = new Date(year, 0, 1); // January 1st
+    const to = new Date(year, 11, 31); // December 31st
+
+    const response = await this.graphql<ContributionResponse>(query, {
       username,
-      from: start.toISOString(),
-      to: end.toISOString(),
+      from: from.toISOString(),
+      to: to.toISOString(),
     });
 
-    return response.user.contributionsCollection.contributionCalendar;
+    return response;
   }
 
   /**
@@ -185,7 +199,7 @@ export class GitHubService {
 
     for (const year of years) {
       const calendar = await this.getContributionsForYear(username, year);
-      calendar.weeks.forEach((week) => {
+      calendar.user.contributionsCollection.contributionCalendar.weeks.forEach((week) => {
         week.contributionDays.forEach((day) => {
           const date = parseISO(day.date);
           if (!isFuture(date) && format(date, 'yyyy-MM-dd') <= todayStr) {
@@ -208,8 +222,12 @@ export class GitHubService {
   /**
    * Finds the most recent date with contributions
    */
-  private findLastCommitDate(dates: [string, number][]): string | null {
-    return dates.findLast(([, count]) => count > 0)?.[0] ?? null;
+  private findLastCommitDate(dates: [string, number][], todayStr: string): string | null {
+    return (
+      dates
+        .filter(([date]) => date <= todayStr)
+        .findLast(([, count]) => count > 0)?.[0] ?? null
+    );
   }
 
   /**
@@ -231,6 +249,9 @@ export class GitHubService {
     // Count consecutive days with contributions from most recent
     let streak = 0;
     for (const [date, count] of dates.toReversed()) {
+      // Skip future dates
+      if (date > todayStr) continue;
+
       // Skip today if no contributions
       if (date === todayStr && count === 0) continue;
 
@@ -246,24 +267,35 @@ export class GitHubService {
   /**
    * Calculates the longest streak in the contribution history
    */
-  private calculateLongestStreak(dates: [string, number][]): number {
-    return dates.reduce(
-      ({ currentStreak, maxStreak }, [, count]) => {
-        const newStreak = count > 0 ? currentStreak + 1 : 0;
-        return {
-          currentStreak: newStreak,
-          maxStreak: Math.max(maxStreak, newStreak),
-        };
-      },
-      { currentStreak: 0, maxStreak: 0 }
-    ).maxStreak;
+  private calculateLongestStreak(dates: [string, number][], todayStr: string): number {
+    let currentStreak = 0;
+    let maxStreak = 0;
+
+    for (const [date, count] of dates) {
+      // Skip future dates
+      if (date > todayStr) continue;
+
+      if (count > 0) {
+        currentStreak++;
+        maxStreak = Math.max(maxStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    }
+
+    return maxStreak;
   }
 
   /**
    * Calculates total number of contributions
    */
-  private calculateTotalCommits(contributions: ContributionMap): number {
-    return Object.values(contributions).reduce((sum, count) => sum + count, 0);
+  private calculateTotalCommits(
+    contributions: ContributionMap,
+    todayStr: string
+  ): number {
+    return Object.entries(contributions)
+      .filter(([date]) => date <= todayStr)
+      .reduce((sum, [, count]) => sum + count, 0);
   }
 
   /**
@@ -278,9 +310,9 @@ export class GitHubService {
 
     return {
       currentStreak: this.calculateCurrentStreak(dates, todayStr, yesterdayStr),
-      longestStreak: this.calculateLongestStreak(dates),
-      totalCommits: this.calculateTotalCommits(contributions),
-      lastCommitDate: this.findLastCommitDate(dates),
+      longestStreak: this.calculateLongestStreak(dates, todayStr),
+      totalCommits: this.calculateTotalCommits(contributions, todayStr),
+      lastCommitDate: this.findLastCommitDate(dates, todayStr),
     };
   }
 
@@ -288,32 +320,52 @@ export class GitHubService {
    * Gets the commit history and calculates streak statistics for a user
    */
   async getCommitHistory(username: string): Promise<StreakStats> {
-    try {
-      await this.validateToken();
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    let contributions: Record<string, number> = {};
+    let hasMoreHistory = true;
+    let yearToFetch = currentYear;
 
-      const user = await this.fetchUserInfo(username);
-      const today = new Date();
+    while (hasMoreHistory) {
+      // Fetch the year's contributions
+      const yearData = await this.getContributionsForYear(username, yearToFetch);
+      const yearContributions = this.extractContributionsFromYear(yearData);
 
-      // Determine years to fetch
-      const userCreatedYear = parseInt(user.createdAt.split('-')[0]);
-      const firstContributionYear = Math.min(
-        ...user.contributionsCollection.contributionYears
-      );
-      const startYear = Math.min(userCreatedYear, firstContributionYear);
-      const yearsToFetch = Array.from(
-        { length: today.getFullYear() - startYear + 1 },
-        (_, i) => startYear + i
-      );
+      // Merge with existing contributions
+      contributions = { ...yearContributions, ...contributions };
 
-      const contributions = await this.collectContributions(
-        username,
-        yearsToFetch,
-        today
-      );
-      return this.calculateStreaks(contributions, today);
-    } catch (error) {
-      console.error('Error fetching commit history:', error);
-      throw error;
+      // Calculate current results
+      const results = this.calculateStreaks(contributions, now);
+
+      // Check if we need to fetch more history
+      const earliestDateInYear = `${yearToFetch}-01-01`;
+      const hasContributionsOnJan1 = yearContributions[earliestDateInYear] > 0;
+
+      // Stop conditions:
+      // 1. If the longest streak doesn't reach January 1st
+      // 2. If we've gone back 5 years (as a safety limit)
+      // 3. If January 1st has no contributions (streak is broken)
+      const needsMoreHistory = hasContributionsOnJan1 && yearToFetch > currentYear - 5;
+
+      if (!needsMoreHistory) {
+        hasMoreHistory = false;
+      } else {
+        yearToFetch--;
+      }
     }
+
+    return this.calculateStreaks(contributions, now);
+  }
+
+  private extractContributionsFromYear(yearData: any): Record<string, number> {
+    const contributions: Record<string, number> = {};
+
+    for (const week of yearData.user.contributionsCollection.contributionCalendar.weeks) {
+      for (const day of week.contributionDays) {
+        contributions[day.date] = day.contributionCount;
+      }
+    }
+
+    return contributions;
   }
 }

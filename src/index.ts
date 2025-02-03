@@ -43,31 +43,45 @@ app.get('/', (c) => {
 });
 
 // JSON endpoint
-app.get('/streak/:username', async (c) => {
-  try {
-    const username = c.req.param('username');
-    const githubService = c.get('githubService');
-    const stats = await githubService.getCommitHistory(username);
-    return c.json(stats);
-  } catch (error) {
-    return c.json({ error: 'Failed to fetch streak stats' }, 500);
+app.get(
+  '/streak/:username',
+  cache({
+    cacheName: 'github-streak',
+    cacheControl: 'public, max-age=43200',
+  }),
+  async (c) => {
+    try {
+      const username = c.req.param('username');
+      const githubService = c.get('githubService');
+      const stats = await githubService.getCommitHistory(username);
+      return c.json(stats);
+    } catch (error) {
+      return c.json({ error: 'Failed to fetch streak stats' }, 500);
+    }
   }
-});
+);
 
 // Badge endpoint
-app.get('/streak/:username/badge', async (c) => {
-  try {
-    const username = c.req.param('username');
-    const githubService = c.get('githubService');
-    const stats = await githubService.getCommitHistory(username);
-    const svg = BadgeService.generateStreakBadge(stats);
+app.get(
+  '/streak/:username/badge',
+  cache({
+    cacheName: 'github-streak-badge',
+    cacheControl: 'public, max-age=43200',
+  }),
+  async (c) => {
+    try {
+      const username = c.req.param('username');
+      const githubService = c.get('githubService');
+      const stats = await githubService.getCommitHistory(username);
+      const svg = BadgeService.generateStreakBadge(stats);
 
-    c.header('Content-Type', 'image/svg+xml');
-    c.header('Cache-Control', 'public, max-age=3600');
-    return c.body(svg);
-  } catch (error) {
-    return c.json({ error: 'Failed to generate badge' }, 500);
+      c.header('Content-Type', 'image/svg+xml');
+      c.header('Cache-Control', 'public, max-age=43200');
+      return c.body(svg);
+    } catch (error) {
+      return c.json({ error: 'Failed to generate badge' }, 500);
+    }
   }
-});
+);
 
 export default app;

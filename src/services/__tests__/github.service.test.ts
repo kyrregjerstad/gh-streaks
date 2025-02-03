@@ -1,6 +1,5 @@
 import { expect, test, describe, beforeEach } from 'bun:test';
 import { GitHubService } from '../github.service';
-import type { ContributionResponse } from '../github.service';
 
 // Mock the GraphQL responses
 const mockGraphQLResponse = {

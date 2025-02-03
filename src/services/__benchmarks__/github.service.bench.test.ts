@@ -111,7 +111,7 @@ describe('GitHubService Performance', () => {
     service.graphql = () => Promise.resolve(mockResponse);
 
     const start = Bun.nanoseconds();
-    await service['collectContributions']('testuser', [2024], mockDate);
+    await service['getContributionsForYear']('testuser', 2024);
     const end = Bun.nanoseconds();
 
     console.log(`Data collection (mocked): ${((end - start) / 1_000_000).toFixed(3)}ms`);

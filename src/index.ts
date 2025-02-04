@@ -45,10 +45,10 @@ app.get('/', (c) => {
 // JSON endpoint
 app.get(
   '/streak/:username',
-  // cache({
-  //   cacheName: 'github-streak',
-  //   cacheControl: 'public, max-age=43200',
-  // }),
+  cache({
+    cacheName: 'github-streak',
+    cacheControl: 'public, max-age=43200',
+  }),
   async (c) => {
     try {
       const username = c.req.param('username');
@@ -64,10 +64,10 @@ app.get(
 // Badge endpoint
 app.get(
   '/streak/:username/badge',
-  // cache({
-  //   cacheName: 'github-streak-badge',
-  //   cacheControl: 'public, max-age=43200',
-  // }),
+  cache({
+    cacheName: 'github-streak-badge',
+    cacheControl: 'public, max-age=43200',
+  }),
   async (c) => {
     try {
       const username = c.req.param('username');
@@ -76,7 +76,7 @@ app.get(
       const svg = BadgeService.generateStreakBadge(stats);
 
       c.header('Content-Type', 'image/svg+xml');
-      // c.header('Cache-Control', 'public, max-age=43200');
+      c.header('Cache-Control', 'public, max-age=43200');
       return c.body(svg);
     } catch (error) {
       return c.json({ error: 'Failed to generate badge' }, 500);

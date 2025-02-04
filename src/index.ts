@@ -3,7 +3,6 @@ import { cache } from 'hono/cache';
 import { GitHubService } from './services/github.service';
 import { BadgeService } from './services/badge.service';
 
-// Add type for environment variables
 type Bindings = {
   GITHUB_TOKEN: string;
 };
@@ -14,13 +13,11 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Initialize GitHub service with token from environment
 app.use('*', async (c, next) => {
   c.set('githubService', new GitHubService(c.env.GITHUB_TOKEN));
   await next();
 });
 
-// Home page with instructions
 app.get('/', (c) => {
   return c.html(`
     <html>
@@ -42,7 +39,6 @@ app.get('/', (c) => {
   `);
 });
 
-// JSON endpoint
 app.get(
   '/streak/:username',
   cache({

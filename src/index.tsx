@@ -2,6 +2,29 @@ import { Hono } from 'hono';
 import { cache } from 'hono/cache';
 import { GitHubService } from './services/github.service';
 import { BadgeService } from './services/badge.service';
+import type { FC } from 'hono/jsx';
+
+const Layout: FC = (props) => {
+  return (
+    <html>
+      <body>{props.children}</body>
+    </html>
+  );
+};
+
+const Home: FC<{ baseUrl: string }> = ({ baseUrl }) => {
+  return (
+    <Layout>
+      <h1>🔥 GitHub Streak Stats</h1>
+      <p>Add your GitHub streak stats to your README!</p>
+      <h2>Usage</h2>
+      <p>Add this to your README.md:</p>
+      <pre>
+        [![GitHub Streak](${baseUrl}streak/YOUR_GITHUB_USERNAME)](${baseUrl})
+      </pre>
+    </Layout>
+  );
+};
 
 type Bindings = {
   GITHUB_TOKEN: string;
@@ -19,24 +42,7 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/', (c) => {
-  return c.html(`
-    <html>
-      <head>
-        <title>GitHub Streak Stats</title>
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; }
-          pre { background: #f5f5f5; padding: 1rem; border-radius: 4px; }
-        </style>
-      </head>
-      <body>
-        <h1>🔥 GitHub Streak Stats</h1>
-        <p>Add your GitHub streak stats to your README!</p>
-        <h2>Usage</h2>
-        <p>Add this to your README.md:</p>
-        <pre>[![GitHub Streak](${c.req.url}streak/YOUR_GITHUB_USERNAME)](${c.req.url})</pre>
-      </body>
-    </html>
-  `);
+  return c.html(<Home baseUrl={c.req.url} />);
 });
 
 app.get(
